@@ -1,327 +1,380 @@
-// Canvas Setup
-const canvas = document.getElementById('flowerCanvas');
+// ========================================
+// SETUP
+// ========================================
+const canvas = document.getElementById('garden');
 const ctx = canvas.getContext('2d');
+const intro = document.getElementById('intro');
+const counterBox = document.getElementById('counterBox');
+const countNum = document.getElementById('countNum');
 
-// State
+let width, height;
 let flowers = [];
+let particles = [];
 let flowerCount = 0;
-let hasClicked = false;
+let firstClick = false;
 
-// Elements
-const introScreen = document.getElementById('introScreen');
-const flowerCountEl = document.getElementById('flowerCount');
-const hiddenMessage = document.getElementById('hiddenMessage');
-
-// Resize canvas
-function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-// Color palette - yellow and bright green with transparency
-const colors = {
+// Warna bunga
+const palette = {
     yellow: {
-        light: 'rgba(255, 230, 100, 0.7)',
-        main: 'rgba(255, 215, 0, 0.6)',
-        dark: 'rgba(218, 165, 32, 0.5)'
+        petal: 'rgba(255, 223, 0, 0.65)',
+        petalLight: 'rgba(255, 240, 150, 0.7)',
+        petalDark: 'rgba(200, 170, 0, 0.5)',
+        center: 'rgba(180, 130, 20, 0.7)'
     },
     green: {
-        light: 'rgba(144, 238, 144, 0.7)',
-        main: 'rgba(50, 205, 50, 0.6)',
-        dark: 'rgba(34, 139, 34, 0.5)'
+        petal: 'rgba(50, 205, 50, 0.6)',
+        petalLight: 'rgba(144, 238, 144, 0.7)',
+        petalDark: 'rgba(34, 139, 34, 0.5)',
+        center: 'rgba(60, 120, 60, 0.7)'
     },
-    stem: 'rgba(34, 139, 34, 0.4)',
-    leaf: 'rgba(50, 205, 50, 0.5)'
+    stem: 'rgba(60, 140, 60, 0.5)',
+    leaf: 'rgba(80, 180, 80, 0.45)',
+    bud: 'rgba(100, 180, 100, 0.6)'
 };
 
-// Flower class
+// Resize
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ========================================
+// BUNGA CLASS - Fase pertumbuhan lengkap
+// ========================================
 class Flower {
-    constructor(x, y) {
+    constructor(x, targetY) {
         this.x = x;
-        this.targetY = y;
-        this.currentY = canvas.height + 100;
-        this.petalCount = Math.floor(Math.random() * 3) + 5; // 5-7 petals
-        this.petalSize = Math.random() * 20 + 25;
-        this.colorType = Math.random() > 0.5 ? 'yellow' : 'green';
-        this.rotation = Math.random() * Math.PI * 2;
-        this.rotationSpeed = (Math.random() - 0.5) * 0.01;
-        this.growth = 0;
-        this.maxGrowth = 1;
-        this.growthSpeed = Math.random() * 0.015 + 0.01;
-        this.stemHeight = canvas.height - y + 50;
-        this.currentStemHeight = 0;
-        this.swayOffset = Math.random() * Math.PI * 2;
-        this.swaySpeed = Math.random() * 0.02 + 0.01;
-        this.leafCount = Math.floor(Math.random() * 2) + 1;
-        this.leaves = [];
-        this.hasLeaves = false;
+        this.targetY = targetY;
         
-        // Generate leaf positions
+        // Tinggi total tanaman
+        this.maxStemHeight = height - targetY + 30;
+        this.stemHeight = 0;
+        this.stemGrowthSpeed = 2.5 + Math.random() * 1.5;
+        
+        // Fase: 'sprout' -> 'growing' -> 'budding' -> 'blooming' -> 'bloomed'
+        this.phase = 'sprout';
+        this.phaseProgress = 0;
+        
+        // Properti bunga
+        this.colorType = Math.random() < 0.55 ? 'yellow' : 'green';
+        this.petalCount = 5 + Math.floor(Math.random() * 3);
+        this.petalLength = 22 + Math.random() * 18;
+        this.petalWidth = 12 + Math.random() * 8;
+        
+        // Rotasi & gerakan
+        this.rotation = Math.random() * Math.PI * 2;
+        this.swayPhase = Math.random() * Math.PI * 2;
+        this.swaySpeed = 0.008 + Math.random() * 0.006;
+        
+        // Daun
+        this.leaves = [];
+        this.leafCount = 1 + Math.floor(Math.random() * 2);
+        this.generateLeaves();
+        
+        // Tunas & mekar
+        this.budSize = 0;
+        this.bloomProgress = 0;
+        this.bloomSpeed = 0.012 + Math.random() * 0.008;
+    }
+    
+    generateLeaves() {
         for (let i = 0; i < this.leafCount; i++) {
             this.leaves.push({
-                height: Math.random() * 0.5 + 0.3,
-                side: Math.random() > 0.5 ? 1 : -1,
-                size: Math.random() * 15 + 10
+                heightRatio: 0.3 + Math.random() * 0.4,
+                side: Math.random() < 0.5 ? -1 : 1,
+                size: 12 + Math.random() * 10,
+                angle: 0.3 + Math.random() * 0.3,
+                growth: 0
             });
         }
     }
     
     update() {
-        // Stem growing
-        if (this.currentStemHeight < this.stemHeight) {
-            this.currentStemHeight += 8;
-            if (this.currentStemHeight > this.stemHeight) {
-                this.currentStemHeight = this.stemHeight;
+        const time = performance.now() * 0.001;
+        this.swayPhase += this.swaySpeed;
+        
+        // Fase SPROUT - tunas muncul dari tanah
+        if (this.phase === 'sprout') {
+            this.phaseProgress += 0.025;
+            if (this.phaseProgress >= 1) {
+                this.phase = 'growing';
+                this.phaseProgress = 0;
             }
         }
         
-        // Flower position
-        this.currentY = this.targetY;
-        
-        // Growth animation
-        if (this.growth < this.maxGrowth) {
-            this.growth += this.growthSpeed;
-            if (this.growth > this.maxGrowth) {
-                this.growth = this.maxGrowth;
+        // Fase GROWING - batang tumbuh ke atas
+        else if (this.phase === 'growing') {
+            this.stemHeight += this.stemGrowthSpeed;
+            
+            // Daun mulai tumbuh saat batang cukup tinggi
+            this.leaves.forEach(leaf => {
+                if (this.stemHeight > this.maxStemHeight * leaf.heightRatio) {
+                    leaf.growth = Math.min(1, leaf.growth + 0.02);
+                }
+            });
+            
+            if (this.stemHeight >= this.maxStemHeight) {
+                this.stemHeight = this.maxStemHeight;
+                this.phase = 'budding';
+                this.phaseProgress = 0;
             }
         }
         
-        // Gentle rotation
-        this.rotation += this.rotationSpeed;
+        // Fase BUDDING - tunas bunga muncul
+        else if (this.phase === 'budding') {
+            this.budSize = Math.min(1, this.budSize + 0.015);
+            if (this.budSize >= 1) {
+                this.phase = 'blooming';
+            }
+        }
         
-        // Leaves appear after stem grows
-        if (this.currentStemHeight > this.stemHeight * 0.5 && !this.hasLeaves) {
-            this.hasLeaves = true;
+        // Fase BLOOMING - bunga mekar
+        else if (this.phase === 'blooming') {
+            this.bloomProgress += this.bloomSpeed;
+            if (this.bloomProgress >= 1) {
+                this.bloomProgress = 1;
+                this.phase = 'bloomed';
+            }
+        }
+        
+        // Rotasi pelan saat sudah mekar
+        if (this.phase === 'bloomed') {
+            this.rotation += 0.0005;
         }
     }
     
     draw() {
-        const time = Date.now() * 0.001;
-        const sway = Math.sin(time * this.swaySpeed + this.swayOffset) * 3;
+        const sway = Math.sin(this.swayPhase) * 4;
+        const stemTopY = height - this.stemHeight;
         
         ctx.save();
-        ctx.translate(this.x + sway, this.currentY);
         
-        // Draw stem
-        if (this.currentStemHeight > 0) {
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            
-            // Curved stem
-            const controlX = sway * 0.3;
-            const stemEnd = Math.min(this.currentStemHeight, this.stemHeight);
-            
-            ctx.quadraticCurveTo(
-                controlX, 
-                stemEnd * 0.5, 
-                sway * 0.5, 
-                stemEnd
-            );
-            
-            ctx.strokeStyle = colors.stem;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            // Draw leaves
-            if (this.hasLeaves) {
-                this.leaves.forEach(leaf => {
-                    const leafY = stemEnd * leaf.height;
-                    ctx.save();
-                    ctx.translate(sway * 0.3 * leaf.height, leafY);
-                    ctx.rotate(leaf.side * 0.5);
-                    this.drawLeaf(leaf.size);
-                    ctx.restore();
-                });
-            }
+        // === 1. GAMBAR BATANG ===
+        if (this.stemHeight > 0) {
+            this.drawStem(sway, stemTopY);
         }
         
-        // Draw flower head (only after growth starts)
-        if (this.growth > 0) {
+        // === 2. GAMBAR DAUN ===
+        if (this.stemHeight > 50) {
+            this.drawLeaves(sway);
+        }
+        
+        // === 3. GAMBAR TUNAS/BUNGA ===
+        if (this.phase === 'sprout') {
+            this.drawSprout();
+        } else if (this.phase === 'budding' || this.phase === 'blooming' || this.phase === 'bloomed') {
+            this.drawFlowerHead(sway, stemTopY);
+        }
+        
+        ctx.restore();
+    }
+    
+    drawStem(sway, stemTopY) {
+        ctx.beginPath();
+        ctx.moveTo(this.x, height);
+        
+        // Batang melengkung natural
+        const cp1x = this.x + sway * 0.3;
+        const cp1y = height - this.stemHeight * 0.4;
+        const cp2x = this.x + sway * 0.6;
+        const cp2y = stemTopY + this.stemHeight * 0.3;
+        const endX = this.x + sway * 0.8;
+        
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, stemTopY);
+        
+        ctx.strokeStyle = palette.stem;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+    }
+    
+    drawLeaves(sway) {
+        this.leaves.forEach(leaf => {
+            if (leaf.growth <= 0) return;
+            
+            const leafY = height - this.stemHeight * leaf.heightRatio;
+            const leafX = this.x + sway * (1 - leaf.heightRatio) * 0.5;
+            const size = leaf.size * leaf.growth;
+            
             ctx.save();
-            ctx.translate(sway * 0.1, -this.currentStemHeight * 0.02);
-            this.drawFlowerHead();
+            ctx.translate(leafX, leafY);
+            ctx.rotate(leaf.angle * leaf.side);
+            
+            // Bentuk daun
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(size * 0.5 * leaf.side, -size * 0.4, size * leaf.side, 0);
+            ctx.quadraticCurveTo(size * 0.5 * leaf.side, size * 0.4, 0, 0);
+            
+            ctx.fillStyle = palette.leaf;
+            ctx.fill();
+            
+            // Tulang daun
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(size * 0.7 * leaf.side, 0);
+            ctx.strokeStyle = 'rgba(60, 120, 60, 0.3)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+            
+            ctx.restore();
+        });
+    }
+    
+    drawSprout() {
+        // Tunas kecil muncul dari tanah
+        const sproutHeight = 15 * this.phaseProgress;
+        const sproutWidth = 6 + 4 * this.phaseProgress;
+        
+        ctx.save();
+        ctx.translate(this.x, height - 5);
+        
+        // Dua helai tunas
+        for (let i = 0; i < 2; i++) {
+            ctx.save();
+            ctx.rotate((i === 0 ? -1 : 1) * 0.3);
+            
+            ctx.beginPath();
+            ctx.ellipse(0, -sproutHeight / 2, sproutWidth / 2, sproutHeight, 0, 0, Math.PI * 2);
+            ctx.fillStyle = palette.bud;
+            ctx.fill();
+            
             ctx.restore();
         }
         
         ctx.restore();
     }
     
-    drawLeaf(size) {
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(size * 0.5, -size * 0.3, size, 0);
-        ctx.quadraticCurveTo(size * 0.5, size * 0.3, 0, 0);
-        ctx.fillStyle = colors.leaf;
-        ctx.fill();
-    }
-    
-    drawFlowerHead() {
-        const color = colors[this.colorType];
-        const size = this.petalSize * this.growth;
+    drawFlowerHead(sway, stemTopY) {
+        const colors = palette[this.colorType];
+        const headX = this.x + sway * 0.8;
+        const headY = stemTopY;
         
-        // Outer petals
-        for (let i = 0; i < this.petalCount; i++) {
-            const angle = (i / this.petalCount) * Math.PI * 2 + this.rotation;
-            const petalX = Math.cos(angle) * size * 0.8;
-            const petalY = Math.sin(angle) * size * 0.8;
-            
-            ctx.save();
-            ctx.translate(petalX, petalY);
-            ctx.rotate(angle);
+        ctx.save();
+        ctx.translate(headX, headY);
+        
+        // Tunas (belum mekar penuh)
+        if (this.phase === 'budding') {
+            const budW = 12 * this.budSize;
+            const budH = 18 * this.budSize;
             
             ctx.beginPath();
-            ctx.ellipse(0, 0, size * 0.4, size * 0.8, 0, 0, Math.PI * 2);
-            ctx.fillStyle = color.main;
+            ctx.ellipse(0, -budH / 2, budW, budH, 0, 0, Math.PI * 2);
+            ctx.fillStyle = colors.petalDark;
             ctx.fill();
             
-            // Petal detail
-            ctx.beginPath();
-            ctx.ellipse(0, size * 0.1, size * 0.15, size * 0.4, 0, 0, Math.PI * 2);
-            ctx.fillStyle = color.light;
-            ctx.fill();
-            
-            ctx.restore();
+            // Lipatan tunas
+            for (let i = 0; i < 3; i++) {
+                ctx.save();
+                ctx.rotate(i * Math.PI * 2 / 3);
+                ctx.beginPath();
+                ctx.ellipse(0, -budH * 0.6, budW * 0.4, budH * 0.5, 0, 0, Math.PI);
+                ctx.fillStyle = colors.petal;
+                ctx.fill();
+                ctx.restore();
+            }
         }
         
-        // Inner petals (layered)
-        for (let i = 0; i < this.petalCount; i++) {
-            const angle = (i / this.petalCount) * Math.PI * 2 + this.rotation + Math.PI / this.petalCount;
-            const petalX = Math.cos(angle) * size * 0.4;
-            const petalY = Math.sin(angle) * size * 0.4;
+        // Mekar
+        else {
+            const openFactor = this.bloomProgress;
+            const petalLen = this.petalLength * openFactor;
+            const petalWid = this.petalWidth * openFactor;
             
-            ctx.save();
-            ctx.translate(petalX, petalY);
-            ctx.rotate(angle);
+            // Kelopak luar
+            for (let i = 0; i < this.petalCount; i++) {
+                const angle = (i / this.petalCount) * Math.PI * 2 + this.rotation;
+                const spreadAngle = 0.25 * openFactor;
+                
+                ctx.save();
+                ctx.rotate(angle);
+                ctx.translate(0, -5);
+                ctx.rotate(spreadAngle);
+                
+                ctx.beginPath();
+                ctx.ellipse(0, -petalLen / 2, petalWid / 2, petalLen / 2, 0, 0, Math.PI * 2);
+                ctx.fillStyle = colors.petal;
+                ctx.fill();
+                
+                // Highlight
+                ctx.beginPath();
+                ctx.ellipse(-petalWid * 0.15, -petalLen * 0.35, petalWid * 0.2, petalLen * 0.3, -0.2, 0, Math.PI * 2);
+                ctx.fillStyle = colors.petalLight;
+                ctx.fill();
+                
+                ctx.restore();
+            }
             
-            ctx.beginPath();
-            ctx.ellipse(0, 0, size * 0.25, size * 0.5, 0, 0, Math.PI * 2);
-            ctx.fillStyle = color.light;
-            ctx.fill();
+            // Kelopak dalam (lebih kecil)
+            if (openFactor > 0.3) {
+                const innerPetalLen = petalLen * 0.6;
+                const innerPetalWid = petalWid * 0.5;
+                
+                for (let i = 0; i < this.petalCount; i++) {
+                    const angle = (i / this.petalCount) * Math.PI * 2 + this.rotation + Math.PI / this.petalCount;
+                    
+                    ctx.save();
+                    ctx.rotate(angle);
+                    ctx.translate(0, -3);
+                    
+                    ctx.beginPath();
+                    ctx.ellipse(0, -innerPetalLen / 2, innerPetalWid / 2, innerPetalLen / 2, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = colors.petalLight;
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            }
             
-            ctx.restore();
+            // Pusat bunga
+            if (openFactor > 0.5) {
+                const centerSize = 6 * openFactor;
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, centerSize, 0, Math.PI * 2);
+                ctx.fillStyle = colors.center;
+                ctx.fill();
+                
+                // Detail pusat
+                if (openFactor > 0.8) {
+                    for (let i = 0; i < 6; i++) {
+                        const dotAngle = (i / 6) * Math.PI * 2 + this.rotation;
+                        const dotX = Math.cos(dotAngle) * centerSize * 0.5;
+                        const dotY = Math.sin(dotAngle) * centerSize * 0.5;
+                        
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, 1.5, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(255, 255, 200, 0.5)';
+                        ctx.fill();
+                    }
+                }
+            }
         }
         
-        // Center
-        const centerSize = Math.max(1, size * 0.25);
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, centerSize);
-        gradient.addColorStop(0, 'rgba(255, 255, 200, 0.9)');
-        gradient.addColorStop(0.5, 'rgba(255, 215, 0, 0.7)');
-        gradient.addColorStop(1, 'rgba(218, 165, 32, 0.5)');
-        
-        ctx.beginPath();
-        ctx.arc(0, 0, centerSize, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
-        
-        // Center dots
-        for (let i = 0; i < 8; i++) {
-            const dotAngle = (i / 8) * Math.PI * 2;
-            const dotX = Math.cos(dotAngle) * centerSize * 0.5;
-            const dotY = Math.sin(dotAngle) * centerSize * 0.5;
-            
-            ctx.beginPath();
-            ctx.arc(dotX, dotY, Math.max(1, centerSize * 0.15), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(139, 90, 43, 0.6)';
-            ctx.fill();
-        }
+        ctx.restore();
     }
 }
 
-// Create sparkles on click
-function createSparkles(x, y) {
-    const sparkCount = 5;
-    for (let i = 0; i < sparkCount; i++) {
-        const sparkle = document.createElement('div');
-        sparkle.className = 'click-sparkle';
-        sparkle.style.left = (x + (Math.random() - 0.5) * 30) + 'px';
-        sparkle.style.top = (y + (Math.random() - 0.5) * 30) + 'px';
-        sparkle.style.background = Math.random() > 0.5 
-            ? colors.yellow.main 
-            : colors.green.main;
-        document.body.appendChild(sparkle);
-        
-        setTimeout(() => sparkle.remove(), 600);
-    }
-}
-
-// Click handler
-canvas.addEventListener('click', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Hide intro screen on first click
-    if (!hasClicked) {
-        hasClicked = true;
-        introScreen.classList.add('hidden');
-    }
-    
-    // Create flower
-    const flower = new Flower(x, y);
-    flowers.push(flower);
-    
-    // Update counter
-    flowerCount++;
-    flowerCountEl.textContent = flowerCount;
-    
-    // Show hidden message after 5 flowers
-    if (flowerCount === 5) {
-        hiddenMessage.classList.add('visible');
-    }
-    
-    // Change message after more flowers
-    if (flowerCount === 15) {
-        hiddenMessage.style.opacity = '0';
-        setTimeout(() => {
-            hiddenMessage.textContent = 'Terima kasih sudah hadir dalam hidupku';
-            hiddenMessage.style.opacity = '1';
-        }, 500);
-    }
-    
-    if (flowerCount === 30) {
-        hiddenMessage.style.opacity = '0';
-        setTimeout(() => {
-            hiddenMessage.textContent = 'Selamanya akan kutinggal kan bunga untukmu';
-            hiddenMessage.style.opacity = '1';
-        }, 500);
-    }
-    
-    // Create sparkles
-    createSparkles(e.clientX, e.clientY);
-});
-
-// Animation loop
-function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Update and draw flowers
-    flowers.forEach(flower => {
-        flower.update();
-        flower.draw();
-    });
-    
-    requestAnimationFrame(animate);
-}
-
-// Start animation
-animate();
-
-// Add some ambient particles
+// ========================================
+// PARTIKEL AMBIENT
+// ========================================
 class Particle {
     constructor() {
         this.reset();
     }
     
     reset() {
-        this.x = Math.random() * canvas.width;
-        this.y = Math.random() * canvas.height;
-        this.size = Math.random() * 2 + 0.5;
-        this.speedY = -Math.random() * 0.3 - 0.1;
-        this.speedX = (Math.random() - 0.5) * 0.2;
-        this.opacity = Math.random() * 0.3 + 0.1;
-        this.color = Math.random() > 0.5 ? colors.yellow.main : colors.green.main;
+        this.x = Math.random() * width;
+        this.y = Math.random() * height;
+        this.size = 0.5 + Math.random() * 1.5;
+        this.speedY = -(0.15 + Math.random() * 0.25);
+        this.speedX = (Math.random() - 0.5) * 0.15;
+        this.opacity = 0.1 + Math.random() * 0.25;
+        this.color = Math.random() < 0.5 
+            ? `rgba(255, 230, 100, ${this.opacity})`
+            : `rgba(120, 220, 120, ${this.opacity})`;
     }
     
     update() {
@@ -330,44 +383,100 @@ class Particle {
         
         if (this.y < -10) {
             this.reset();
-            this.y = canvas.height + 10;
+            this.y = height + 10;
         }
     }
     
     draw() {
         ctx.beginPath();
-        ctx.arc(this.x, this.y, Math.max(0.5, this.size), 0, Math.PI * 2);
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
         ctx.fill();
     }
 }
 
-// Create ambient particles
-const particles = [];
-for (let i = 0; i < 30; i++) {
+// Inisialisasi partikel
+for (let i = 0; i < 25; i++) {
     particles.push(new Particle());
 }
 
-// Add particle animation to main loop
-const originalAnimate = animate;
-function animateWithParticles() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// ========================================
+// EFEK KLIK (RIPPLE)
+// ========================================
+function createRipple(x, y) {
+    const ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    const size = 100 + Math.random() * 50;
+    ripple.style.width = size + 'px';
+    ripple.style.height = size + 'px';
+    ripple.style.left = (x - size / 2) + 'px';
+    ripple.style.top = (y - size / 2) + 'px';
+    ripple.style.background = Math.random() < 0.5 
+        ? 'radial-gradient(circle, rgba(255,223,0,0.3), transparent)'
+        : 'radial-gradient(circle, rgba(100,220,100,0.3), transparent)';
+    document.body.appendChild(ripple);
     
-    // Draw particles
+    setTimeout(() => ripple.remove(), 800);
+}
+
+// ========================================
+// EVENT HANDLER
+// ========================================
+function handleClick(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    
+    // Sembunyikan intro
+    if (!firstClick) {
+        firstClick = true;
+        intro.classList.add('hide');
+        setTimeout(() => counterBox.classList.add('show'), 400);
+    }
+    
+    // Buat bunga baru
+    const flower = new Flower(x, y);
+    flowers.push(flower);
+    
+    // Update counter
+    flowerCount++;
+    countNum.textContent = flowerCount;
+    
+    // Efek ripple
+    createRipple(clientX, clientY);
+}
+
+// Mouse click
+canvas.addEventListener('click', (e) => {
+    handleClick(e.clientX, e.clientY);
+});
+
+// Touch (mobile)
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    handleClick(touch.clientX, touch.clientY);
+}, { passive: false });
+
+// ========================================
+// ANIMATION LOOP
+// ========================================
+function animate() {
+    ctx.clearRect(0, 0, width, height);
+    
+    // Partikel
     particles.forEach(p => {
         p.update();
         p.draw();
     });
     
-    // Update and draw flowers
-    flowers.forEach(flower => {
-        flower.update();
-        flower.draw();
+    // Bunga
+    flowers.forEach(f => {
+        f.update();
+        f.draw();
     });
     
-    requestAnimationFrame(animateWithParticles);
+    requestAnimationFrame(animate);
 }
 
-// Override animation
-cancelAnimationFrame(animate);
-animateWithParticles();
+animate();
